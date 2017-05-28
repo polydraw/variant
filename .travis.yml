@@ -1,0 +1,18 @@
+language: rust
+
+rust:
+   - stable
+   - beta
+   - nightly
+
+os:
+   - linux
+   - osx
+
+install:
+   - cargo install rustfmt
+   - test $TRAVIS_RUST_VERSION == "nightly" && cargo install clippy
+
+script:
+   - cargo fmt -- --write-mode=diff
+   - test $TRAVIS_RUST_VERSION == "nightly" && cargo clippy
