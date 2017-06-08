@@ -1,6 +1,3 @@
-#![cfg_attr(feature="clippy", feature(plugin))]
-#![cfg_attr(feature="clippy", plugin(clippy))]
-
 use std::any::{TypeId, Any};
 use std::clone::Clone;
 use std::fmt::{Display, Debug, Formatter, Error as FmtError};

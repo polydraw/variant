@@ -7,6 +7,3 @@ readme = "README.md"
 repository = "https://github.com/polydraw/variant"
 homepage = "https://github.com/polydraw/variant"
 description = "Dynamic variant type"
-
-[dependencies]
-clippy = {version = "*", optional = true}
