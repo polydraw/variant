@@ -4,11 +4,37 @@ use std::fmt::{Display, Debug, Formatter, Error as FmtError};
 
 pub struct Variant<'a> {
    data: *mut (),
-   vtable: &'a VTable<'a>,
+   vtable: &'a VTable,
 }
 
+pub struct VariantRef<'a> {
+   data: &'a (),
+   vtable: &'a VTable,
+}
+
+pub struct VariantRefMut<'a> {
+   data: &'a mut (),
+   vtable: &'a VTable,
+}
+
+pub struct VTable {
+   id: TypeId,
+   clone: CloneFn,
+   drop: DropFn,
+   display: DisplayFn,
+   debug: DebugFn,
+}
+
+type CloneFn = for<'b> fn(&Variant<'b>) -> Variant<'b>;
+
+type DropFn = for<'b> fn(&mut Variant<'b>);
+
+type DisplayFn = for<'b> fn(&Variant<'b>, f: &mut Formatter) -> Result<(), FmtError>;
+
+type DebugFn = DisplayFn;
+
 impl<'a> Variant<'a> {
-   pub fn new<T: Any>(value: T, vtable: &'a VTable<'a>) -> Self {
+   pub fn new<T: Any>(value: T, vtable: &'a VTable) -> Self {
       Variant {
          data: Box::into_raw(Box::new(value)) as *mut (),
          vtable: vtable,
@@ -53,6 +79,94 @@ impl<'a> Variant<'a> {
    }
 }
 
+impl<'a> AsRef<VariantRef<'a>> for Variant<'a> {
+   fn as_ref(&self) -> &VariantRef<'a> {
+      unsafe { &*(self as *const _ as *const VariantRef<'a>) }
+   }
+}
+
+impl<'a> AsMut<VariantRefMut<'a>> for Variant<'a> {
+   fn as_mut(&mut self) -> &mut VariantRefMut<'a> {
+      unsafe { &mut *(self as *mut _ as *mut VariantRefMut<'a>) }
+   }
+}
+
+impl<'a> VariantRef<'a> {
+   pub fn new<T: Any>(value: &'a T, vtable: &'a VTable) -> Self {
+      VariantRef {
+         data: unsafe { &*(value as *const _ as *const ()) },
+         vtable: vtable,
+      }
+   }
+
+   #[inline]
+   pub fn is<T: Any>(&self) -> bool {
+      self.vtable.id == TypeId::of::<T>()
+   }
+
+   #[inline]
+   pub fn downcast_ref<T: Any>(&self) -> Option<&T> {
+      if self.is::<T>() {
+         unsafe { Some(&*(self.data as *const _ as *const T)) }
+      } else {
+         None
+      }
+   }
+
+   #[inline]
+   pub unsafe fn downcast_ref_unchecked<T: Any>(&self) -> &T {
+      debug_assert!(self.is::<T>());
+
+      &*(self.data as *const _ as *const T)
+   }
+}
+
+impl<'a> VariantRefMut<'a> {
+   pub fn new<T: Any>(value: &'a mut T, vtable: &'a VTable) -> Self {
+      VariantRefMut {
+         data: unsafe { &mut *(value as *mut _ as *mut ()) },
+         vtable: vtable,
+      }
+   }
+
+   #[inline]
+   pub fn is<T: Any>(&self) -> bool {
+      self.vtable.id == TypeId::of::<T>()
+   }
+
+   #[inline]
+   pub fn downcast_ref<T: Any>(&self) -> Option<&T> {
+      if self.is::<T>() {
+         unsafe { Some(&*(self.data as *const _ as *const T)) }
+      } else {
+         None
+      }
+   }
+
+   #[inline]
+   pub fn downcast_mut<T: Any>(&mut self) -> Option<&mut T> {
+      if self.is::<T>() {
+         unsafe { Some(&mut *(self.data as *mut _ as *mut T)) }
+      } else {
+         None
+      }
+   }
+
+   #[inline]
+   pub unsafe fn downcast_ref_unchecked<T: Any>(&self) -> &T {
+      debug_assert!(self.is::<T>());
+
+      &*(self.data as *const _ as *const T)
+   }
+
+   #[inline]
+   pub unsafe fn downcast_mut_unchecked<T: Any>(&mut self) -> &mut T {
+      debug_assert!(self.is::<T>());
+
+      &mut *(self.data as *mut _ as *mut T)
+   }
+}
+
 impl<'a> Clone for Variant<'a> {
    fn clone(&self) -> Self {
       (self.vtable.clone)(self)
@@ -77,24 +191,7 @@ impl<'a> Debug for Variant<'a> {
    }
 }
 
-type CloneFn<'a> = fn(&Variant<'a>) -> Variant<'a>;
-
-type DropFn<'a> = fn(&mut Variant<'a>);
-
-type DisplayFn<'a> = fn(&Variant<'a>, f: &mut Formatter) -> Result<(), FmtError>;
-
-type DebugFn<'a> = DisplayFn<'a>;
-
-pub struct VTable<'a> {
-   id: TypeId,
-   clone: CloneFn<'a>,
-   drop: DropFn<'a>,
-   display: DisplayFn<'a>,
-   debug: DebugFn<'a>,
-}
-
-impl<'a> VTable<'a> {
-   #[cfg_attr(feature = "cargo-clippy", allow(new_without_default))]
+impl VTable {
    pub fn new<T: Any + Clone + Display + Debug>() -> Self {
       VTable {
          id: TypeId::of::<T>(),
@@ -105,8 +202,16 @@ impl<'a> VTable<'a> {
       }
    }
 
-   pub fn variant<T: Any>(&'a self, value: T) -> Variant<'a> {
+   pub fn variant<T: Any>(&self, value: T) -> Variant {
       Variant::new(value, self)
+   }
+
+   pub fn variant_ref<'a, T: Any>(&'a self, value: &'a T) -> VariantRef<'a> {
+      VariantRef::new(value, self)
+   }
+
+   pub fn variant_ref_mut<'a, T: Any>(&'a self, value: &'a mut T) -> VariantRefMut<'a> {
+      VariantRefMut::new(value, self)
    }
 }
 
@@ -192,5 +297,48 @@ mod tests {
       let vtable = VTable::new::<i64>();
       let variant = vtable.variant(1234_i64);
       assert_eq!("1234", format!("{}", variant));
+   }
+
+   #[test]
+   fn as_ref() {
+      let vtable = VTable::new::<i64>();
+      let variant = vtable.variant(1234_i64);
+
+      fn inner(variant: &VariantRef) {
+         assert_eq!(Some(&1234_i64), variant.downcast_ref::<i64>());
+      }
+
+      inner(variant.as_ref());
+   }
+
+   #[test]
+   fn as_mut() {
+      let vtable = VTable::new::<i64>();
+      let mut variant = vtable.variant(1234_i64);
+
+      fn inner(variant: &mut VariantRefMut) {
+         *variant.downcast_mut::<i64>().unwrap() *= 2;
+      }
+
+      inner(variant.as_mut());
+
+      assert_eq!(Some(&2468_i64), variant.downcast_ref::<i64>());
+   }
+
+   #[test]
+   fn stack_ref() {
+      let vtable = VTable::new::<i64>();
+      let values: [i64; 4] = [0, 2, 5, 6];
+      let variants = [
+         vtable.variant_ref(&values[0]),
+         vtable.variant_ref(&values[1]),
+         vtable.variant_ref(&values[2]),
+         vtable.variant_ref(&values[3]),
+      ];
+      let mut sum: i64 = 0;
+      for variant in &variants {
+         sum += *variant.downcast_ref::<i64>().unwrap();
+      }
+      assert_eq!(13_i64, sum);
    }
 }
