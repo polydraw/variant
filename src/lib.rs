@@ -25,11 +25,11 @@ pub struct VTable {
    debug: DebugFn,
 }
 
-type CloneFn = for<'b> fn(&Variant<'b>) -> Variant<'b>;
+type CloneFn = for<'b> fn(&VariantRef<'b>) -> Variant<'b>;
 
 type DropFn = for<'b> fn(&mut Variant<'b>);
 
-type DisplayFn = for<'b> fn(&Variant<'b>, f: &mut Formatter) -> Result<(), FmtError>;
+type DisplayFn = for<'b> fn(&VariantRef<'b>, f: &mut Formatter) -> Result<(), FmtError>;
 
 type DebugFn = DisplayFn;
 
@@ -91,6 +91,30 @@ impl<'a> AsMut<VariantRefMut<'a>> for Variant<'a> {
    }
 }
 
+impl<'a> Clone for Variant<'a> {
+   fn clone(&self) -> Self {
+      (self.vtable.clone)(self.as_ref())
+   }
+}
+
+impl<'a> Drop for Variant<'a> {
+   fn drop(&mut self) {
+      (self.vtable.drop)(self)
+   }
+}
+
+impl<'a> Display for Variant<'a> {
+   fn fmt(&self, f: &mut Formatter) -> Result<(), FmtError> {
+      (self.vtable.display)(self.as_ref(), f)
+   }
+}
+
+impl<'a> Debug for Variant<'a> {
+   fn fmt(&self, f: &mut Formatter) -> Result<(), FmtError> {
+      (self.vtable.debug)(self.as_ref(), f)
+   }
+}
+
 impl<'a> VariantRef<'a> {
    pub fn new<T: Any>(value: &'a T, vtable: &'a VTable) -> Self {
       VariantRef {
@@ -118,6 +142,18 @@ impl<'a> VariantRef<'a> {
       debug_assert!(self.is::<T>());
 
       &*(self.data as *const _ as *const T)
+   }
+}
+
+impl<'a> Display for VariantRef<'a> {
+   fn fmt(&self, f: &mut Formatter) -> Result<(), FmtError> {
+      (self.vtable.display)(self, f)
+   }
+}
+
+impl<'a> Debug for VariantRef<'a> {
+   fn fmt(&self, f: &mut Formatter) -> Result<(), FmtError> {
+      (self.vtable.debug)(self, f)
    }
 }
 
@@ -167,27 +203,21 @@ impl<'a> VariantRefMut<'a> {
    }
 }
 
-impl<'a> Clone for Variant<'a> {
-   fn clone(&self) -> Self {
-      (self.vtable.clone)(self)
+impl<'a> AsRef<VariantRef<'a>> for VariantRefMut<'a> {
+   fn as_ref(&self) -> &VariantRef<'a> {
+      unsafe { &*(self as *const _ as *const VariantRef<'a>) }
    }
 }
 
-impl<'a> Drop for Variant<'a> {
-   fn drop(&mut self) {
-      (self.vtable.drop)(self)
-   }
-}
-
-impl<'a> Display for Variant<'a> {
+impl<'a> Display for VariantRefMut<'a> {
    fn fmt(&self, f: &mut Formatter) -> Result<(), FmtError> {
-      (self.vtable.display)(self, f)
+      (self.vtable.display)(self.as_ref(), f)
    }
 }
 
-impl<'a> Debug for Variant<'a> {
+impl<'a> Debug for VariantRefMut<'a> {
    fn fmt(&self, f: &mut Formatter) -> Result<(), FmtError> {
-      (self.vtable.debug)(self, f)
+      (self.vtable.debug)(self.as_ref(), f)
    }
 }
 
@@ -215,7 +245,7 @@ impl VTable {
    }
 }
 
-fn clone_variant<'a, T: Any + Clone>(variant: &Variant<'a>) -> Variant<'a> {
+fn clone_variant<'a, T: Any + Clone>(variant: &VariantRef<'a>) -> Variant<'a> {
    Variant::new(unsafe { variant.downcast_ref_unchecked() as &T }.clone(), variant.vtable)
 }
 
@@ -223,11 +253,14 @@ fn drop_variant<T>(variant: &mut Variant) {
    drop(unsafe { *Box::from_raw(variant.data as *mut T) });
 }
 
-fn display_variant<T: Any + Display>(variant: &Variant, f: &mut Formatter) -> Result<(), FmtError> {
+fn display_variant<T: Any + Display>(
+   variant: &VariantRef,
+   f: &mut Formatter,
+) -> Result<(), FmtError> {
    Display::fmt(unsafe { variant.downcast_ref_unchecked() as &T }, f)
 }
 
-fn debug_variant<T: Any + Debug>(variant: &Variant, f: &mut Formatter) -> Result<(), FmtError> {
+fn debug_variant<T: Any + Debug>(variant: &VariantRef, f: &mut Formatter) -> Result<(), FmtError> {
    Debug::fmt(unsafe { variant.downcast_ref_unchecked() as &T }, f)
 }
 
@@ -289,6 +322,32 @@ mod tests {
    }
 
    #[test]
+   fn debug_ref() {
+      let vtable = VTable::new::<&str>();
+      let data = "data";
+      let variant_ref = vtable.variant_ref(&data);
+      assert_eq!("\"data\"", format!("{:?}", variant_ref));
+
+      let vtable = VTable::new::<i64>();
+      let data = 1234_i64;
+      let variant_ref = vtable.variant_ref(&data);
+      assert_eq!("1234", format!("{:?}", variant_ref));
+   }
+
+   #[test]
+   fn debug_ref_mut() {
+      let vtable = VTable::new::<&str>();
+      let mut data = "data";
+      let variant_ref = vtable.variant_ref_mut(&mut data);
+      assert_eq!("\"data\"", format!("{:?}", variant_ref));
+
+      let vtable = VTable::new::<i64>();
+      let mut data = 1234_i64;
+      let variant_ref = vtable.variant_ref_mut(&mut data);
+      assert_eq!("1234", format!("{:?}", variant_ref));
+   }
+
+   #[test]
    fn display() {
       let vtable = VTable::new::<&str>();
       let variant = vtable.variant("data");
@@ -296,6 +355,32 @@ mod tests {
 
       let vtable = VTable::new::<i64>();
       let variant = vtable.variant(1234_i64);
+      assert_eq!("1234", format!("{}", variant));
+   }
+
+   #[test]
+   fn display_ref() {
+      let vtable = VTable::new::<&str>();
+      let data = "data";
+      let variant = vtable.variant_ref(&data);
+      assert_eq!("data", format!("{}", variant));
+
+      let vtable = VTable::new::<i64>();
+      let data = 1234_i64;
+      let variant = vtable.variant_ref(&data);
+      assert_eq!("1234", format!("{}", variant));
+   }
+
+   #[test]
+   fn display_ref_mut() {
+      let vtable = VTable::new::<&str>();
+      let mut data = "data";
+      let variant = vtable.variant_ref_mut(&mut data);
+      assert_eq!("data", format!("{}", variant));
+
+      let vtable = VTable::new::<i64>();
+      let mut data = 1234_i64;
+      let variant = vtable.variant_ref_mut(&mut data);
       assert_eq!("1234", format!("{}", variant));
    }
 
