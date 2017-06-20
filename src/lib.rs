@@ -1,6 +1,7 @@
 use std::any::{TypeId, Any};
 use std::clone::Clone;
 use std::fmt::{Display, Debug, Formatter, Error as FmtError};
+use std::ops::Deref;
 
 pub struct Variant<'a> {
    data: *mut (),
@@ -76,6 +77,14 @@ impl<'a> Variant<'a> {
       debug_assert!(self.is::<T>());
 
       &mut *(self.data as *mut T)
+   }
+}
+
+impl<'a> Deref for Variant<'a> {
+   type Target = VariantRef<'a>;
+
+   fn deref(&self) -> &VariantRef<'a> {
+      self.as_ref()
    }
 }
 
@@ -382,6 +391,18 @@ mod tests {
       let mut data = 1234_i64;
       let variant = vtable.variant_ref_mut(&mut data);
       assert_eq!("1234", format!("{}", variant));
+   }
+
+   #[test]
+   fn deref() {
+      let vtable = VTable::new::<i64>();
+      let variant = vtable.variant(1234_i64);
+
+      fn inner(variant: &VariantRef) {
+         assert_eq!(Some(&1234_i64), variant.downcast_ref::<i64>());
+      }
+
+      inner(&variant);
    }
 
    #[test]
