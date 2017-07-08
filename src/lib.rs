@@ -11,7 +11,7 @@ pub use variant_ref_mut::VariantRefMut;
 
 #[cfg(test)]
 mod tests {
-   use std::fmt::{Display, Debug};
+   use std::fmt::{Display, Debug, Formatter, Error as FmtError};
 
    use super::*;
 
