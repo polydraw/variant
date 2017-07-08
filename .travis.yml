@@ -15,15 +15,15 @@ rust:
 cache: cargo
 
 install:
-  - type -p cargo-install-update || travis_wait cargo install cargo-update
-  - travis_wait cargo install-update -i cargo-update
+  - type -p cargo-install-update || cargo install cargo-update
+  - cargo install-update -i cargo-update
   - if [ $TRAVIS_RUST_VERSION == nightly ]; then
-      travis_wait cargo install-update -i rustfmt-nightly
+      cargo install-update -i rustfmt-nightly
       cargo clippy -V;
       if [ $? == 0 ]; then
-        travis_wait cargo install-update -i clippy;
+        cargo install-update -i clippy;
       else
-        travis_wait cargo install-update -i -f clippy;
+        cargo install-update -i -f clippy;
       fi
     fi
 
