@@ -72,4 +72,3 @@ impl<'a> Debug for VariantRefMut<'a> {
       (self.vtable.debug)(self.as_ref(), f)
    }
 }
-

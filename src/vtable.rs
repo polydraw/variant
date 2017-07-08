@@ -9,7 +9,8 @@ type CloneFn = for<'b> fn(&VariantRef<'b>) -> Variant<'b>;
 
 type DropFn = for<'b> fn(&mut Variant<'b>);
 
-type DisplayFn = for<'b> fn(&VariantRef<'b>, f: &mut Formatter) -> Result<(), FmtError>;
+type DisplayFn = for<'b> fn(&VariantRef<'b>, f: &mut Formatter)
+   -> Result<(), FmtError>;
 
 type DebugFn = DisplayFn;
 
