@@ -2,8 +2,8 @@ use vtable::VTable;
 use variant_ref::VariantRef;
 use variant_ref_mut::VariantRefMut;
 
-use std::any::{TypeId, Any};
-use std::fmt::{Display, Debug, Formatter, Error as FmtError};
+use std::any::{Any, TypeId};
+use std::fmt::{Debug, Display, Error as FmtError, Formatter};
 use std::ops::Deref;
 
 

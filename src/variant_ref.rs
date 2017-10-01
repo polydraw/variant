@@ -1,7 +1,7 @@
 use vtable::VTable;
 
-use std::any::{TypeId, Any};
-use std::fmt::{Display, Debug, Formatter, Error as FmtError};
+use std::any::{Any, TypeId};
+use std::fmt::{Debug, Display, Error as FmtError, Formatter};
 
 pub struct VariantRef<'a> {
    pub data: &'a (),
